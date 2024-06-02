@@ -4,22 +4,49 @@ const { performance } = require('perf_hooks');
 
 // Função para simular um DFA
 function simulateDFA(dfa, inputString) {
-    let currentStates = [dfa.initial];
+    let currentStates = new Set([dfa.initial]);
 
-    for (let symbol of inputString) {
-        let nextStates = [];
-        for (let currentState of currentStates) {
-            const transitions = dfa.transitions.filter(t => t.from === currentState && t.read === symbol);
-            nextStates.push(...transitions.map(t => t.to));
+    // Função auxiliar para processar transições epsilon
+    function processEpsilonTransitions(states) {
+        let stack = [...states];
+        let visited = new Set(stack);
+
+        while (stack.length > 0) {
+            let state = stack.pop();
+            let epsilonTransitions = dfa.transitions.filter(t => t.from === state && t.read === null);
+            for (let transition of epsilonTransitions) {
+                if (!visited.has(transition.to)) {
+                    visited.add(transition.to);
+                    stack.push(transition.to);
+                }
+            }
         }
-        currentStates = nextStates;
+
+        return visited;
     }
 
-    // Verifica se todos os estados atuais são estados finais
-    return currentStates.every(state => dfa.final.includes(state));
+    // Processar transições epsilon a partir do estado inicial
+    currentStates = processEpsilonTransitions(currentStates);
+
+    for (let symbol of inputString) {
+        let nextStates = new Set();
+        for (let currentState of currentStates) {
+            const transitions = dfa.transitions.filter(t => t.from === currentState && t.read === symbol);
+            for (let transition of transitions) {
+                nextStates.add(transition.to);
+            }
+        }
+        currentStates = processEpsilonTransitions(nextStates);
+    }
+
+    // Verifica se algum dos estados atuais é um estado final
+    for (let state of currentStates) {
+        if (dfa.final.includes(state)) {
+            return true;
+        }
+    }
+    return false;
 }
-
-
 
 // Função principal para ler os arquivos e simular o autômato
 function main() {
@@ -42,10 +69,10 @@ function main() {
         const automaton = JSON.parse(data);
 
         // Processamento das entradas de teste
-        let results = [];
+        let results = ["input;expected;obtained;time"]; // Adiciona cabeçalho
 
         fs.createReadStream(testFile)
-            .pipe(csv({ separator: ';', headers: ['input', 'expected'] }))
+            .pipe(csv({ separator: ';', headers: ['input', 'expected'], skipLines: 1 })) // Pula cabeçalho
             .on('data', (row) => {
                 let inputString = row.input;
                 let expectedResult = row.expected === '1';
